@@ -1,0 +1,16 @@
+.gradle/
+build/
+out/
+*.iml
+.idea/
+.DS_Store
+.env
+
+# Whole-slide image data must never be committed.
+*.mrxs
+Data*.dat
+Index.dat
+Slidedat.ini
+
+# Local validation output
+review_outputs/
