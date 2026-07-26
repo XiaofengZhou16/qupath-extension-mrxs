@@ -6,7 +6,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-mrxs"
     group = "io.github.xiaofengzhou"
-    version = "0.3.0-alpha"
+    version = "0.3.1-alpha"
     description = "Native multichannel fluorescence MRXS image support for QuPath"
     automaticModule = "io.github.xiaofengzhou.qupath.mrxs"
 }

@@ -24,10 +24,12 @@ prove specific biological staining.
 - 10 pyramid resolutions
 - channels: DAPI, SpGreen, SpOrange, CY5, SpAqua
 - five-band lowest-resolution QuPath region read succeeds
-- observed channel maxima: `[66, 22, 17, 0, 35]`
+- corrected observed channel maxima: `[17, 22, 66, 121, 35]`
 
-The CY5 band is exactly zero at the tested lowest-resolution layer, while the
-other four bands contain non-zero values.
+An earlier build reported `[66, 22, 17, 0, 35]` because it applied MIRAX BGR
+component numbers directly to ImageIO RGB raster bands. That result was a
+decoder mapping error and must not be interpreted as evidence that CY5 staining
+was absent.
 
 The fixtures are not distributed because whole-slide images may contain
 sensitive information and are too large for source control.
@@ -62,8 +64,18 @@ pixel-perfect equivalence to the vendor viewer at every pyramid level.
 - Public unit tests cover supported metadata and simultaneous bit-depth,
   compression and missing-data-file errors without private fixtures.
 - Both private fixtures pass the compatibility assessment.
-- Lowest-resolution channel statistics distinguish a successfully decoded,
-  all-zero sampled CY5 layer in the five-channel fixture from a decoding
-  failure.
+- Lowest-resolution channel statistics distinguish sampled pixel values from
+  decoding failures without making biological staining claims.
 - The diagnostic wording explicitly limits signal conclusions to the sampled
   pyramid level.
+
+## Version 0.3.1 channel-order correction
+
+- MIRAX packed components are numbered in BGR order, while Java ImageIO exposes
+  decoded JPEG raster bands in RGB order.
+- The corrected mapping is `0 → 2`, `1 → 1`, `2 → 0`.
+- A confirmed CY5-positive five-channel fixture contains CY5 data at all ten
+  stored pyramid levels.
+- In that positive fixture, the decoded CY5 maximum is 255 in the
+  full-resolution stored tiles and 106 at the rendered lowest-resolution
+  layer.

@@ -239,7 +239,9 @@ final class MrxsImageServer extends AbstractTileableImageServer {
             int targetX, int targetY, int targetWidth, int targetHeight, byte[] target
     ) {
         Raster raster = source.getRaster();
-        int sourceBand = Math.max(0, Math.min(component, raster.getNumBands() - 1));
+        int sourceBand = sourceBandForStoredComponent(
+                component, raster.getNumBands()
+        );
         int x0 = Math.max(sourceX, targetX);
         int y0 = Math.max(sourceY, targetY);
         int x1 = Math.min(sourceX + source.getWidth(), targetX + targetWidth);
@@ -260,6 +262,18 @@ final class MrxsImageServer extends AbstractTileableImageServer {
                 target[targetOffset + x] = (byte) samples[x];
             }
         }
+    }
+
+    static int sourceBandForStoredComponent(int storedComponent, int rasterBands) {
+        if (rasterBands <= 0) {
+            throw new IllegalArgumentException("Raster must contain at least one band");
+        }
+        if (rasterBands >= 3 && storedComponent >= 0 && storedComponent <= 2) {
+            // MIRAX stores packed channel numbers in BGR order, whereas ImageIO
+            // exposes decoded JPEG raster bands in RGB order.
+            return 2 - storedComponent;
+        }
+        return Math.max(0, Math.min(storedComponent, rasterBands - 1));
     }
 
     private static List<LevelGeometry> createLevelGeometry(MrxsMetadata metadata) {
@@ -431,7 +445,9 @@ final class MrxsImageServer extends AbstractTileableImageServer {
             text.append(channel.index() + 1).append(". ")
                     .append(channel.name())
                     .append(" | filter=").append(channel.filterLevel())
-                    .append(" | component=").append(channel.storedComponent())
+                    .append(" | storedComponent=").append(channel.storedComponent())
+                    .append(" | decodedBand=")
+                    .append(sourceBandForStoredComponent(channel.storedComponent(), 3))
                     .append(" | excitation=").append(formatWavelength(channel.excitationNm()))
                     .append(" | emission=").append(formatWavelength(channel.emissionNm()))
                     .append('\n');

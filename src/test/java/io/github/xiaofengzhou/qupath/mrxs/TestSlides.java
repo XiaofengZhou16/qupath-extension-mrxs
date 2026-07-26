@@ -22,6 +22,10 @@ final class TestSlides {
         return required("MRXS_TEST_SAMPLE_5C").toUri();
     }
 
+    static Path fiveChannelPositiveCy5() {
+        return required("MRXS_TEST_SAMPLE_5C_POSITIVE_CY5");
+    }
+
     private static Path required(String variable) {
         String value = System.getenv(variable);
         Assumptions.assumeTrue(value != null && !value.isBlank(),

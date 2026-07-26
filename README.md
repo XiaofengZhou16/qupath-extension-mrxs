@@ -25,7 +25,7 @@ instead of silently decoding them incorrectly.
 
 ## Install
 
-1. Download `qupath-extension-mrxs-0.3.0-alpha.jar` from the latest release.
+1. Download `qupath-extension-mrxs-0.3.1-alpha.jar` from the latest release.
 2. In QuPath, open **Extensions → Manage extensions** and drag the JAR into
    the extensions window. Alternatively, copy it into the QuPath extensions
    directory shown by QuPath.
@@ -98,11 +98,12 @@ point to readable MRXS anchor files:
 ```bash
 export MRXS_TEST_SAMPLE_4C=/path/to/four-channel-slide.mrxs
 export MRXS_TEST_SAMPLE_5C=/path/to/five-channel-slide.mrxs
+export MRXS_TEST_SAMPLE_5C_POSITIVE_CY5=/path/to/confirmed-cy5-positive-slide.mrxs
 ./gradlew test
 ```
 
 The installable artifact is written to
-`build/libs/qupath-extension-mrxs-0.3.0-alpha.jar`.
+`build/libs/qupath-extension-mrxs-0.3.1-alpha.jar`.
 
 ## Validation
 

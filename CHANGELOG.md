@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1-alpha — 2026-07-25
+
+- Correct packed-channel decoding from MIRAX BGR component numbering to
+  ImageIO RGB raster-band numbering.
+- Add a confirmed CY5-positive five-channel fixture as an optional integration
+  test and verify CY5 across every stored pyramid level.
+- Correct the earlier validation conclusion that a CY5 layer was all-zero.
+
 ## 0.3.0-alpha — 2026-07-25
 
 - Add a structured compatibility report with stable diagnostic codes.

@@ -9,6 +9,14 @@ import qupath.lib.regions.RegionRequest;
 class MrxsImageServerTest {
 
     @Test
+    void convertsMiraxBgrComponentNumbersToImageIoRgbBands() {
+        assertEquals(2, MrxsImageServer.sourceBandForStoredComponent(0, 3));
+        assertEquals(1, MrxsImageServer.sourceBandForStoredComponent(1, 3));
+        assertEquals(0, MrxsImageServer.sourceBandForStoredComponent(2, 3));
+        assertEquals(0, MrxsImageServer.sourceBandForStoredComponent(2, 1));
+    }
+
+    @Test
     void readsFourChannelLowestResolutionImage() throws Exception {
         try (MrxsImageServer server = new MrxsImageServer(
                 TestSlides.fourChannelUri()
@@ -71,10 +79,8 @@ class MrxsImageServerTest {
                         "Expected non-zero signal in channel " + channel);
             }
             var quality = server.channelQualityReport();
-            assertEquals(
-                    MrxsChannelQualityReport.SignalStatus.ALL_ZERO_AT_SAMPLED_LEVEL,
-                    quality.channels().get(3).status()
-            );
+            assertEquals(5, quality.channels().size());
+            assertTrue(quality.channels().get(3).maximum() > 0);
         }
     }
 
