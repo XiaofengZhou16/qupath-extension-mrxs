@@ -25,7 +25,7 @@ instead of silently decoding them incorrectly.
 
 ## Install
 
-1. Download `qupath-extension-mrxs-0.2.0-alpha.jar` from the latest release.
+1. Download `qupath-extension-mrxs-0.3.0-alpha.jar` from the latest release.
 2. In QuPath, open **Extensions → Manage extensions** and drag the JAR into
    the extensions window. Alternatively, copy it into the QuPath extensions
    directory shown by QuPath.
@@ -42,7 +42,14 @@ Remove older versions of this extension before installing an update.
    channels.
 
 The extension is discovered automatically; it does not add a separate menu
-command.
+command for opening images.
+
+For a slide currently opened by this extension, choose
+**Extensions → MRXS → Show compatibility report**. The report lists format
+support findings, channel/storage mappings, pyramid geometry and statistics
+from the lowest-resolution layer. An all-zero result applies only to that
+sampled layer; it does not prove that the full-resolution channel or biological
+stain is absent.
 
 ## Implemented capabilities
 
@@ -58,6 +65,8 @@ command.
 - Limit tile lookup with a spatial index.
 - Bound decoded-image memory with a 128 MB cache.
 - Deduplicate concurrent decoding and reuse positional file channels.
+- Aggregate compatibility errors and warnings with stable diagnostic codes.
+- Report channel minima, maxima, means and non-zero fractions on demand.
 
 ## Known limitations
 
@@ -93,7 +102,7 @@ export MRXS_TEST_SAMPLE_5C=/path/to/five-channel-slide.mrxs
 ```
 
 The installable artifact is written to
-`build/libs/qupath-extension-mrxs-0.2.0-alpha.jar`.
+`build/libs/qupath-extension-mrxs-0.3.0-alpha.jar`.
 
 ## Validation
 

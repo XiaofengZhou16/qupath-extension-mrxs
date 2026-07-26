@@ -54,3 +54,16 @@ pixel-perfect equivalence to the vendor viewer at every pyramid level.
   128 MB cache limit.
 - Three `DataNNNN.dat` file channels were reused for the test.
 - Unrelated files receive support level 0, so the builder does not claim them.
+
+## Version 0.3 diagnostics
+
+- Compatibility assessment aggregates errors and warnings rather than stopping
+  at the first unsupported property.
+- Public unit tests cover supported metadata and simultaneous bit-depth,
+  compression and missing-data-file errors without private fixtures.
+- Both private fixtures pass the compatibility assessment.
+- Lowest-resolution channel statistics distinguish a successfully decoded,
+  all-zero sampled CY5 layer in the five-channel fixture from a decoding
+  failure.
+- The diagnostic wording explicitly limits signal conclusions to the sampled
+  pyramid level.

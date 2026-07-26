@@ -17,6 +17,7 @@ class MrxsImageServerTest {
             assertEquals(9, server.nResolutions());
             assertEquals("DAPI", server.getMetadata().getChannels().get(0).getName());
             assertEquals("CY5", server.getMetadata().getChannels().get(3).getName());
+            assertTrue(server.compatibilityReport().isSupported());
 
             double downsample = server.getDownsampleForResolution(8);
             int width = (int) Math.ceil(server.getWidth() / downsample);
@@ -38,6 +39,11 @@ class MrxsImageServerTest {
             maxima[3] = maximum(image.getRaster(), 3);
             System.out.println("Four-channel sample maxima: "
                     + java.util.Arrays.toString(maxima));
+
+            var quality = server.channelQualityReport();
+            assertEquals(4, quality.channels().size());
+            assertTrue(quality.channels().get(0).maximum() > 0);
+            assertTrue(server.diagnosticReport(true).contains("Channel quality sample"));
         }
     }
 
@@ -64,6 +70,11 @@ class MrxsImageServerTest {
                 assertTrue(maxima[channel] > 0,
                         "Expected non-zero signal in channel " + channel);
             }
+            var quality = server.channelQualityReport();
+            assertEquals(
+                    MrxsChannelQualityReport.SignalStatus.ALL_ZERO_AT_SAMPLED_LEVEL,
+                    quality.channels().get(3).status()
+            );
         }
     }
 

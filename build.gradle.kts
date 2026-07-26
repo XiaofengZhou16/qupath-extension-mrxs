@@ -6,7 +6,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-mrxs"
     group = "io.github.xiaofengzhou"
-    version = "0.2.0-alpha"
+    version = "0.3.0-alpha"
     description = "Native multichannel fluorescence MRXS image support for QuPath"
     automaticModule = "io.github.xiaofengzhou.qupath.mrxs"
 }
@@ -22,4 +22,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.add("-Xlint:deprecation")
 }

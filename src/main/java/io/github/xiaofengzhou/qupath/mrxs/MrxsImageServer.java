@@ -1,5 +1,7 @@
 package io.github.xiaofengzhou.qupath.mrxs;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import qupath.lib.color.ColorModelFactory;
 import qupath.lib.images.servers.AbstractTileableImageServer;
 import qupath.lib.images.servers.ImageChannel;
@@ -11,6 +13,7 @@ import qupath.lib.images.servers.ImageServerMetadata.ImageResolutionLevel;
 import qupath.lib.images.servers.PixelType;
 import qupath.lib.images.servers.ServerTools;
 import qupath.lib.images.servers.TileRequest;
+import qupath.lib.regions.RegionRequest;
 
 import java.awt.Point;
 import java.awt.image.BandedSampleModel;
@@ -35,10 +38,13 @@ import java.util.zip.InflaterInputStream;
 
 final class MrxsImageServer extends AbstractTileableImageServer {
 
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(MrxsImageServer.class);
     private static final int PREFERRED_TILE_SIZE = 512;
 
     private final URI uri;
     private final MrxsMetadata metadata;
+    private final MrxsCompatibilityReport compatibilityReport;
     private final MiraxIndex index;
     private final ImageServerMetadata originalMetadata;
     private final List<LevelGeometry> levels;
@@ -53,7 +59,16 @@ final class MrxsImageServer extends AbstractTileableImageServer {
         this.uri = uri;
         Path path = Path.of(uri);
         metadata = SlidedatParser.parse(path);
-        validateSupportedMetadata(metadata);
+        compatibilityReport = MrxsCompatibilityReport.assess(metadata);
+        LOGGER.info("MRXS compatibility: {}", compatibilityReport.summary());
+        for (var finding : compatibilityReport.findings()) {
+            if (finding.severity() == MrxsCompatibilityReport.Severity.ERROR) {
+                LOGGER.error("MRXS {}: {}", finding.code(), finding.message());
+            } else {
+                LOGGER.warn("MRXS {}: {}", finding.code(), finding.message());
+            }
+        }
+        compatibilityReport.requireSupported();
         index = MiraxIndex.open(metadata);
         levels = createLevelGeometry(metadata);
         slidePositions = readSlidePositions();
@@ -90,42 +105,6 @@ final class MrxsImageServer extends AbstractTileableImageServer {
                 .preferredTileSize(PREFERRED_TILE_SIZE, PREFERRED_TILE_SIZE)
                 .levels(resolutionBuilder.build())
                 .build();
-    }
-
-    private static void validateSupportedMetadata(MrxsMetadata metadata)
-            throws IOException {
-        if (metadata.storedBitDepth() != 8) {
-            throw new IOException("Unsupported MRXS stored bit depth: "
-                    + metadata.storedBitDepth() + " (only 8-bit is currently supported)");
-        }
-        if (metadata.imageDivisionsPerSide() <= 0
-                || metadata.imageCountX() % metadata.imageDivisionsPerSide() != 0
-                || metadata.imageCountY() % metadata.imageDivisionsPerSide() != 0) {
-            throw new IOException("Invalid MRXS camera image-division geometry");
-        }
-        for (var level : metadata.zoomLevels()) {
-            if (!"JPEG".equalsIgnoreCase(level.imageFormat())) {
-                throw new IOException("Unsupported MRXS image format at zoom "
-                        + level.index() + ": " + level.imageFormat());
-            }
-            if (level.concatFactor() < 0 || level.concatFactor() > 20) {
-                throw new IOException("Unsupported MRXS concat exponent at zoom "
-                        + level.index() + ": " + level.concatFactor());
-            }
-        }
-        int filterCount = metadata.hierarchy()
-                .get(metadata.filterHierarchyIndex()).valueCount();
-        for (var channel : metadata.channels()) {
-            if (channel.filterLevelIndex() < 0
-                    || channel.filterLevelIndex() >= filterCount) {
-                throw new IOException("Invalid filter level for channel "
-                        + channel.name() + ": " + channel.filterLevelIndex());
-            }
-            if (channel.storedComponent() < 0 || channel.storedComponent() > 2) {
-                throw new IOException("Unsupported packed component for channel "
-                        + channel.name() + ": " + channel.storedComponent());
-            }
-        }
     }
 
     @Override
@@ -384,6 +363,100 @@ final class MrxsImageServer extends AbstractTileableImageServer {
 
     int openDataFileCount() {
         return index.openDataFileCount();
+    }
+
+    MrxsCompatibilityReport compatibilityReport() {
+        return compatibilityReport;
+    }
+
+    MrxsChannelQualityReport channelQualityReport() throws IOException {
+        int resolution = nResolutions() - 1;
+        double downsample = getDownsampleForResolution(resolution);
+        BufferedImage image = readRegion(RegionRequest.createInstance(
+                getPath(), downsample, 0, 0, getWidth(), getHeight()
+        ));
+        Raster raster = image.getRaster();
+        long sampledPixels = (long) raster.getWidth() * raster.getHeight();
+        List<MrxsChannelQualityReport.ChannelStatistics> statistics =
+                new ArrayList<>(nChannels());
+        for (int channel = 0; channel < nChannels(); channel++) {
+            int minimum = 255;
+            int maximum = 0;
+            long nonZero = 0;
+            long sum = 0;
+            for (int y = 0; y < raster.getHeight(); y++) {
+                for (int x = 0; x < raster.getWidth(); x++) {
+                    int value = raster.getSample(x, y, channel);
+                    minimum = Math.min(minimum, value);
+                    maximum = Math.max(maximum, value);
+                    sum += value;
+                    if (value != 0) {
+                        nonZero++;
+                    }
+                }
+            }
+            if (sampledPixels == 0) {
+                minimum = 0;
+            }
+            var status = maximum == 0
+                    ? MrxsChannelQualityReport.SignalStatus.ALL_ZERO_AT_SAMPLED_LEVEL
+                    : maximum - minimum < 4
+                    ? MrxsChannelQualityReport.SignalStatus
+                            .LOW_DYNAMIC_RANGE_AT_SAMPLED_LEVEL
+                    : MrxsChannelQualityReport.SignalStatus.SIGNAL_PRESENT;
+            statistics.add(new MrxsChannelQualityReport.ChannelStatistics(
+                    channel,
+                    metadata.channels().get(channel).name(),
+                    minimum,
+                    maximum,
+                    sampledPixels == 0 ? 0 : (double) sum / sampledPixels,
+                    nonZero,
+                    sampledPixels,
+                    status
+            ));
+        }
+        return new MrxsChannelQualityReport(
+                resolution,
+                downsample,
+                raster.getWidth(),
+                raster.getHeight(),
+                statistics
+        );
+    }
+
+    String diagnosticReport(boolean includeChannelQuality) throws IOException {
+        StringBuilder text = new StringBuilder(compatibilityReport.format());
+        text.append("\nChannels\n--------\n");
+        for (var channel : metadata.channels()) {
+            text.append(channel.index() + 1).append(". ")
+                    .append(channel.name())
+                    .append(" | filter=").append(channel.filterLevel())
+                    .append(" | component=").append(channel.storedComponent())
+                    .append(" | excitation=").append(formatWavelength(channel.excitationNm()))
+                    .append(" | emission=").append(formatWavelength(channel.emissionNm()))
+                    .append('\n');
+        }
+        text.append("\nPyramid\n-------\n");
+        for (int i = 0; i < levels.size(); i++) {
+            var level = levels.get(i);
+            text.append(i).append(": ")
+                    .append(level.width()).append(" x ").append(level.height())
+                    .append(", downsample=")
+                    .append(String.format(java.util.Locale.ROOT, "%.3f", level.downsample()))
+                    .append(", format=")
+                    .append(metadata.zoomLevels().get(i).imageFormat())
+                    .append('\n');
+        }
+        if (includeChannelQuality) {
+            text.append('\n').append(channelQualityReport().format());
+        }
+        return text.toString();
+    }
+
+    private static String formatWavelength(double wavelength) {
+        return Double.isFinite(wavelength)
+                ? String.format(java.util.Locale.ROOT, "%.1f nm", wavelength)
+                : "unknown";
     }
 
     private record LevelGeometry(double downsample, int width, int height) {
