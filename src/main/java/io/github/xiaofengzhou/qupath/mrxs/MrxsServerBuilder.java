@@ -17,6 +17,9 @@ public final class MrxsServerBuilder implements ImageServerBuilder<BufferedImage
 
     @Override
     public ImageServer<BufferedImage> buildServer(URI uri, String... args) {
+        if (!supports(uri)) {
+            return null;
+        }
         try {
             return new MrxsImageServer(uri, args);
         } catch (Exception e) {
@@ -53,7 +56,8 @@ public final class MrxsServerBuilder implements ImageServerBuilder<BufferedImage
             }
             MrxsMetadata metadata = SlidedatParser.parse(path);
             return !metadata.channels().isEmpty()
-                    && metadata.filterHierarchyIndex() >= 0;
+                    && metadata.filterHierarchyIndex() >= 0
+                    && MrxsCompatibilityReport.assess(metadata).isSupported();
         } catch (Exception e) {
             return false;
         }
