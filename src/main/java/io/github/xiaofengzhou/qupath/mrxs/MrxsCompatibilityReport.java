@@ -98,6 +98,54 @@ record MrxsCompatibilityReport(
                 ));
             }
         }
+        if (!metadata.zoomLevels().isEmpty()) {
+            var base = metadata.zoomLevels().getFirst();
+            long cumulative = 1;
+            long baseCumulative = -1;
+            double maximumDifference = 0;
+            int maximumDifferenceLevel = -1;
+            double maximumPhysicalDownsampleX = Double.NaN;
+            double maximumPhysicalDownsampleY = Double.NaN;
+            double maximumGeometryDownsample = Double.NaN;
+            for (int i = 0; i < metadata.zoomLevels().size(); i++) {
+                var level = metadata.zoomLevels().get(i);
+                cumulative = Math.multiplyExact(cumulative, 1L << level.concatFactor());
+                if (i == 0) {
+                    baseCumulative = cumulative;
+                }
+                double geometryDownsample = (double) cumulative / baseCumulative;
+                double physicalDownsampleX = level.pixelSizeXMicrons()
+                        / base.pixelSizeXMicrons();
+                double physicalDownsampleY = level.pixelSizeYMicrons()
+                        / base.pixelSizeYMicrons();
+                double relativeDifference = Math.max(
+                        relativeDifference(geometryDownsample, physicalDownsampleX),
+                        relativeDifference(geometryDownsample, physicalDownsampleY)
+                );
+                if (relativeDifference > maximumDifference) {
+                    maximumDifference = relativeDifference;
+                    maximumDifferenceLevel = level.index();
+                    maximumPhysicalDownsampleX = physicalDownsampleX;
+                    maximumPhysicalDownsampleY = physicalDownsampleY;
+                    maximumGeometryDownsample = geometryDownsample;
+                }
+            }
+            if (maximumDifference > 0.001) {
+                findings.add(Finding.warning(
+                        "PYRAMID_PIXEL_SIZE_MISMATCH",
+                        String.format(
+                                Locale.ROOT,
+                                "Maximum geometry/physical pixel-size mismatch is "
+                                        + "%.4f%% at zoom %d (geometry %.6f; physical "
+                                        + "ratios %.6f x %.6f). Geometry controls tile "
+                                        + "placement; both values are reported for validation.",
+                                maximumDifference * 100.0, maximumDifferenceLevel,
+                                maximumGeometryDownsample,
+                                maximumPhysicalDownsampleX, maximumPhysicalDownsampleY
+                        )
+                ));
+            }
+        }
 
         if (metadata.channels().isEmpty()) {
             findings.add(Finding.error(
@@ -219,6 +267,14 @@ record MrxsCompatibilityReport(
 
     private static String blankAsUnknown(String value) {
         return value == null || value.isBlank() ? "unknown" : value;
+    }
+
+    private static double relativeDifference(double first, double second) {
+        if (!Double.isFinite(first) || !Double.isFinite(second)
+                || first <= 0 || second <= 0) {
+            return Double.POSITIVE_INFINITY;
+        }
+        return Math.abs(first - second) / Math.max(first, second);
     }
 
     enum Severity {

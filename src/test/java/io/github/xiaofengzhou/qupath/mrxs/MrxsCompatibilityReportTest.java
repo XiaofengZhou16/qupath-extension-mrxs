@@ -37,6 +37,33 @@ class MrxsCompatibilityReportTest {
         assertThrows(MrxsCompatibilityException.class, report::requireSupported);
     }
 
+    @Test
+    void warnsWhenPhysicalPixelSizeAndGeometryDownsampleDiverge() throws Exception {
+        MrxsMetadata original = metadata(8, "JPEG", true);
+        var base = original.zoomLevels().getFirst();
+        MrxsMetadata changed = new MrxsMetadata(
+                original.anchorPath(), original.slideDirectory(), original.slideId(),
+                original.slideVersion(), original.currentSlideVersion(),
+                original.slideType(), original.imageCountX(), original.imageCountY(),
+                original.imageDivisionsPerSide(), original.storedBitDepth(),
+                original.cameraBitDepth(), original.objectiveMagnification(),
+                original.hierarchy(), original.zoomHierarchyIndex(),
+                original.filterHierarchyIndex(), original.positionNonhierRecord(),
+                original.compressedPositionRecord(),
+                List.of(
+                        base,
+                        new MrxsMetadata.ZoomLevel(
+                                1, 0.55, 0.55, 256, 256, 1, 0, 0, "JPEG"
+                        )
+                ),
+                original.channels(), original.dataFiles()
+        );
+
+        MrxsCompatibilityReport report = MrxsCompatibilityReport.assess(changed);
+        assertTrue(report.isSupported());
+        assertTrue(hasCode(report, "PYRAMID_PIXEL_SIZE_MISMATCH"));
+    }
+
     private MrxsMetadata metadata(
             int storedBitDepth,
             String imageFormat,

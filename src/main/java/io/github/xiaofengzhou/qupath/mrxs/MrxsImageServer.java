@@ -383,6 +383,54 @@ final class MrxsImageServer extends AbstractTileableImageServer {
         return compatibilityReport;
     }
 
+    int closestResolution(double requestedDownsample) {
+        if (!Double.isFinite(requestedDownsample) || requestedDownsample <= 0) {
+            throw new IllegalArgumentException("Downsample must be finite and positive");
+        }
+        int closest = 0;
+        double closestDistance = Double.POSITIVE_INFINITY;
+        for (int i = 0; i < levels.size(); i++) {
+            double distance = Math.abs(
+                    Math.log(requestedDownsample / levels.get(i).downsample())
+            );
+            if (distance < closestDistance) {
+                closest = i;
+                closestDistance = distance;
+            }
+        }
+        return closest;
+    }
+
+    List<PyramidLevelInfo> pyramidLevelInfo() throws IOException {
+        List<PyramidLevelInfo> result = new ArrayList<>(levels.size());
+        var base = metadata.zoomLevels().getFirst();
+        for (int i = 0; i < levels.size(); i++) {
+            var geometry = levels.get(i);
+            var stored = metadata.zoomLevels().get(i);
+            int storedImages = 0;
+            for (int filter : channelsByFilter.keySet()) {
+                storedImages = Math.addExact(
+                        storedImages, index.readTiles(i, filter).size()
+                );
+            }
+            result.add(new PyramidLevelInfo(
+                    i,
+                    geometry.downsample(),
+                    geometry.width(),
+                    geometry.height(),
+                    stored.pixelSizeXMicrons(),
+                    stored.pixelSizeYMicrons(),
+                    stored.pixelSizeXMicrons() / base.pixelSizeXMicrons(),
+                    stored.pixelSizeYMicrons() / base.pixelSizeYMicrons(),
+                    stored.imageWidth(),
+                    stored.imageHeight(),
+                    storedImages,
+                    stored.imageFormat()
+            ));
+        }
+        return List.copyOf(result);
+    }
+
     MrxsChannelQualityReport channelQualityReport() throws IOException {
         int resolution = nResolutions() - 1;
         double downsample = getDownsampleForResolution(resolution);
@@ -453,14 +501,27 @@ final class MrxsImageServer extends AbstractTileableImageServer {
                     .append('\n');
         }
         text.append("\nPyramid\n-------\n");
-        for (int i = 0; i < levels.size(); i++) {
-            var level = levels.get(i);
-            text.append(i).append(": ")
+        for (var level : pyramidLevelInfo()) {
+            text.append(level.level()).append(": ")
                     .append(level.width()).append(" x ").append(level.height())
                     .append(", downsample=")
                     .append(String.format(java.util.Locale.ROOT, "%.3f", level.downsample()))
+                    .append(", pixelSize=")
+                    .append(String.format(
+                            java.util.Locale.ROOT, "%.6f x %.6f um",
+                            level.pixelSizeXMicrons(), level.pixelSizeYMicrons()
+                    ))
+                    .append(", physicalDownsample=")
+                    .append(String.format(
+                            java.util.Locale.ROOT, "%.6f x %.6f",
+                            level.physicalDownsampleX(), level.physicalDownsampleY()
+                    ))
+                    .append(", storedTile=")
+                    .append(level.storedTileWidth()).append(" x ")
+                    .append(level.storedTileHeight())
+                    .append(", storedImages=").append(level.storedImages())
                     .append(", format=")
-                    .append(metadata.zoomLevels().get(i).imageFormat())
+                    .append(level.imageFormat())
                     .append('\n');
         }
         if (includeChannelQuality) {
@@ -476,6 +537,22 @@ final class MrxsImageServer extends AbstractTileableImageServer {
     }
 
     private record LevelGeometry(double downsample, int width, int height) {
+    }
+
+    record PyramidLevelInfo(
+            int level,
+            double downsample,
+            int width,
+            int height,
+            double pixelSizeXMicrons,
+            double pixelSizeYMicrons,
+            double physicalDownsampleX,
+            double physicalDownsampleY,
+            int storedTileWidth,
+            int storedTileHeight,
+            int storedImages,
+            String imageFormat
+    ) {
     }
 
     private record StorageKey(int level, int filter) {

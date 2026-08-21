@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0-alpha — 2026-08-13
+
+- Add an active-viewer validation export with untransformed per-channel PNGs,
+  SHA-256 digests and a JSON manifest containing the exact source region,
+  native pyramid level, downsample and pixel calibration.
+- Add an optional display-composite PNG for visual comparison while preserving
+  raw channel exports as the quantitative reference.
+- Expand pyramid diagnostics with stored tile dimensions, image counts and
+  level-specific physical pixel sizes.
+- Add viewer-local raw-linear and CaseViewer-like percentile display presets;
+  neither preset changes MRXS pixels or QuPath global preferences.
+- Add explicit regression tests that the extension never claims SVS, TIFF,
+  OME-TIFF, NDPI or CZI files.
+- Add one-click selected-ROI export for every non-empty channel combination,
+  with current QuPath colors/ranges/gamma, raw grayscale single channels,
+  non-rectangular ROI masking and a JSON manifest.
+- Decline parseable MRXS layouts that fail the compatibility assessment instead
+  of advertising them to QuPath with a high builder support level.
+- Limit combination export to 25 million pixels per image and 500 million
+  pixels across all combinations, with overflow-safe size calculation.
+- Add a public synthetic four-channel MRXS fixture covering the parser, binary
+  index, packed JPEG channel mapping, ImageServer and both export paths.
+
 ## 0.3.1-alpha — 2026-07-25
 
 - Correct packed-channel decoding from MIRAX BGR component numbering to
