@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonParser;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import javax.imageio.ImageIO;
@@ -37,6 +38,7 @@ class MrxsValidationExportTest {
             assertEquals(server.nChannels(), result.channels().size());
             assertTrue(Files.isRegularFile(result.manifest()));
             String manifest = Files.readString(result.manifest());
+            assertTrue(JsonParser.parseString(manifest).isJsonObject());
             assertTrue(manifest.contains("\"displayTransformsApplied\": false"));
             assertTrue(manifest.contains("\"nativePyramidLevel\": 0"));
             assertFalse(manifest.contains(server.getURIs().iterator().next().toString()));
@@ -83,6 +85,7 @@ class MrxsValidationExportTest {
                     Math.min(256, server.getHeight()), 1.0, snapshot
             );
             String manifest = Files.readString(result.manifest());
+            assertTrue(JsonParser.parseString(manifest).isJsonObject());
             assertTrue(manifest.contains("\"gamma\": 1.25000000"));
             assertTrue(manifest.contains("\"minimum\": 2.00000000"));
             assertTrue(manifest.contains("\"selected\": true"));
@@ -117,6 +120,67 @@ class MrxsValidationExportTest {
                         level.pixelSizeXMicrons()
                                 / levels.getFirst().pixelSizeXMicrons(),
                         level.physicalDownsampleX(), 1e-9
+                );
+            }
+        }
+    }
+
+    @Test
+    void exportsMatchedRegionAcrossEveryNativePyramidLevel() throws Exception {
+        Path fixture = SyntheticMrxsFixture.create(
+                temporaryDirectory.resolve("all-level-fixture")
+        );
+        try (MrxsImageServer server = new MrxsImageServer(fixture.toUri())) {
+            Path output = temporaryDirectory.resolve("all-level-export");
+            var result = MrxsValidationExport.exportAllPyramidLevels(
+                    server, output, 0, 0, server.getWidth(), server.getHeight(), null
+            );
+
+            assertEquals(server.nResolutions(), result.levels().size());
+            assertTrue(Files.isRegularFile(result.manifest()));
+            String manifest = Files.readString(result.manifest());
+            assertTrue(JsonParser.parseString(manifest).isJsonObject());
+            assertTrue(manifest.contains("\"levelCount\": 2"));
+            assertTrue(manifest.contains("\"displayTransformsApplied\": false"));
+            assertFalse(manifest.contains(server.getURIs().iterator().next().toString()));
+            for (int level = 0; level < server.nResolutions(); level++) {
+                var exported = result.levels().get(level);
+                assertEquals(level, exported.pyramidLevel());
+                assertEquals(server.getDownsampleForResolution(level), exported.downsample());
+                assertTrue(Files.isRegularFile(exported.manifest()));
+                assertEquals(server.nChannels(), exported.channels().size());
+                for (var channel : exported.channels()) {
+                    assertTrue(Files.isRegularFile(
+                            exported.outputDirectory().resolve(channel.fileName())
+                    ));
+                }
+            }
+        }
+    }
+
+    @Test
+    void exportsRealFourChannelRegionAcrossEveryNativePyramidLevel()
+            throws Exception {
+        try (MrxsImageServer server = new MrxsImageServer(
+                TestSlides.fourChannelUri()
+        )) {
+            var result = MrxsValidationExport.exportAllPyramidLevels(
+                    server,
+                    temporaryDirectory.resolve("real-all-level-export"),
+                    0,
+                    0,
+                    Math.min(512, server.getWidth()),
+                    Math.min(512, server.getHeight()),
+                    null
+            );
+            assertEquals(server.nResolutions(), result.levels().size());
+            assertEquals(4, result.levels().getFirst().channels().size());
+            assertTrue(Files.isRegularFile(result.manifest()));
+            for (int level = 0; level < server.nResolutions(); level++) {
+                assertEquals(level, result.levels().get(level).pyramidLevel());
+                assertEquals(
+                        server.getDownsampleForResolution(level),
+                        result.levels().get(level).downsample()
                 );
             }
         }

@@ -27,6 +27,7 @@ import java.util.Locale;
 final class MrxsValidationExport {
 
     private static final long MAX_OUTPUT_PIXELS = 100_000_000L;
+    private static final long MAX_TOTAL_CHANNEL_PIXELS = 500_000_000L;
 
     private MrxsValidationExport() {
     }
@@ -46,6 +47,67 @@ final class MrxsValidationExport {
         );
     }
 
+    static PyramidExportResult exportAllPyramidLevels(
+            MrxsImageServer server,
+            Path outputDirectory,
+            int x,
+            int y,
+            int width,
+            int height,
+            DisplaySnapshot displaySnapshot
+    ) throws IOException {
+        validateRegion(server, x, y, width, height);
+        List<MrxsImageServer.PyramidLevelInfo> pyramid = server.pyramidLevelInfo();
+        long totalChannelPixels = 0;
+        for (var info : pyramid) {
+            long pixels = outputPixels(width, height, info.downsample());
+            if (pixels > MAX_OUTPUT_PIXELS) {
+                throw new IOException(
+                        "Pyramid level " + info.level() + " would contain " + pixels
+                                + " pixels per channel; reduce the viewer area."
+                );
+            }
+            try {
+                totalChannelPixels = Math.addExact(
+                        totalChannelPixels,
+                        Math.multiplyExact(pixels, (long) server.nChannels())
+                );
+            } catch (ArithmeticException e) {
+                throw new IOException("Pyramid validation export size overflow", e);
+            }
+        }
+        if (totalChannelPixels > MAX_TOTAL_CHANNEL_PIXELS) {
+            throw new IOException(
+                    "Pyramid validation export would contain " + totalChannelPixels
+                            + " channel-pixels; reduce the viewer area."
+            );
+        }
+
+        Files.createDirectories(outputDirectory);
+        List<ExportResult> levels = new ArrayList<>(pyramid.size());
+        for (var info : pyramid) {
+            Path levelDirectory = outputDirectory.resolve(String.format(
+                    Locale.ROOT, "level-%02d", info.level()
+            ));
+            ExportResult result = exportNativeLevel(
+                    server, levelDirectory, x, y, width, height,
+                    info.downsample(), info.level(), displaySnapshot
+            );
+            levels.add(result);
+        }
+        Path manifestPath = outputDirectory.resolve("pyramid-manifest.json");
+        Files.writeString(
+                manifestPath,
+                pyramidManifestJson(
+                        server, x, y, width, height, totalChannelPixels, levels
+                ),
+                StandardCharsets.UTF_8
+        );
+        return new PyramidExportResult(
+                outputDirectory, manifestPath, totalChannelPixels, levels
+        );
+    }
+
     static ExportResult export(
             MrxsImageServer server,
             Path outputDirectory,
@@ -58,9 +120,25 @@ final class MrxsValidationExport {
     ) throws IOException {
         validateRegion(server, x, y, width, height);
         int level = server.closestResolution(requestedDownsample);
+        return exportNativeLevel(
+                server, outputDirectory, x, y, width, height,
+                requestedDownsample, level, displaySnapshot
+        );
+    }
+
+    private static ExportResult exportNativeLevel(
+            MrxsImageServer server,
+            Path outputDirectory,
+            int x,
+            int y,
+            int width,
+            int height,
+            double requestedDownsample,
+            int level,
+            DisplaySnapshot displaySnapshot
+    ) throws IOException {
         double downsample = server.getDownsampleForResolution(level);
-        long outputPixels = (long) Math.ceil(width / downsample)
-                * (long) Math.ceil(height / downsample);
+        long outputPixels = outputPixels(width, height, downsample);
         if (outputPixels > MAX_OUTPUT_PIXELS) {
             throw new IOException(
                     "Validation export would contain " + outputPixels
@@ -101,6 +179,18 @@ final class MrxsValidationExport {
                 outputDirectory, manifestPath, level, downsample,
                 raw.getWidth(), raw.getHeight(), channels
         );
+    }
+
+    private static long outputPixels(int width, int height, double downsample)
+            throws IOException {
+        try {
+            return Math.multiplyExact(
+                    (long) Math.ceil(width / downsample),
+                    (long) Math.ceil(height / downsample)
+            );
+        } catch (ArithmeticException e) {
+            throw new IOException("Validation export size overflow", e);
+        }
     }
 
     static Path exportDisplayComposite(
@@ -309,6 +399,56 @@ final class MrxsValidationExport {
         return json.append("  ]\n}\n").toString();
     }
 
+    private static String pyramidManifestJson(
+            MrxsImageServer server,
+            int x,
+            int y,
+            int width,
+            int height,
+            long totalChannelPixels,
+            List<ExportResult> levels
+    ) {
+        StringBuilder json = new StringBuilder();
+        json.append("{\n")
+                .append("  \"schemaVersion\": 1,\n")
+                .append("  \"createdUtc\": \"").append(Instant.now()).append("\",\n")
+                .append("  \"serverType\": \"")
+                .append(jsonEscape(server.getServerType())).append("\",\n")
+                .append("  \"sourceFile\": \"")
+                .append(jsonEscape(Path.of(server.getURIs().iterator().next())
+                        .getFileName().toString())).append("\",\n")
+                .append("  \"sourceWidth\": ").append(server.getWidth()).append(",\n")
+                .append("  \"sourceHeight\": ").append(server.getHeight()).append(",\n")
+                .append("  \"region\": {\"x\": ").append(x)
+                .append(", \"y\": ").append(y)
+                .append(", \"width\": ").append(width)
+                .append(", \"height\": ").append(height).append("},\n")
+                .append("  \"displayTransformsApplied\": false,\n")
+                .append("  \"channelCount\": ").append(server.nChannels()).append(",\n")
+                .append("  \"levelCount\": ").append(levels.size()).append(",\n")
+                .append("  \"totalChannelPixels\": ")
+                .append(totalChannelPixels).append(",\n")
+                .append("  \"levels\": [\n");
+        for (int i = 0; i < levels.size(); i++) {
+            ExportResult level = levels.get(i);
+            json.append("    {\"level\": ").append(level.pyramidLevel())
+                    .append(", \"downsample\": ").append(format(level.downsample()))
+                    .append(", \"outputWidth\": ").append(level.outputWidth())
+                    .append(", \"outputHeight\": ").append(level.outputHeight())
+                    .append(", \"directory\": \"")
+                    .append(jsonEscape(level.outputDirectory().getFileName().toString()))
+                    .append("\", \"manifest\": \"")
+                    .append(jsonEscape(level.outputDirectory().getFileName()
+                            + "/" + level.manifest().getFileName()))
+                    .append("\"}");
+            if (i + 1 < levels.size()) {
+                json.append(',');
+            }
+            json.append('\n');
+        }
+        return json.append("  ]\n}\n").toString();
+    }
+
     private static String safeName(String value) {
         String safe = value.replaceAll("[^A-Za-z0-9._-]+", "-")
                 .replaceAll("^-+|-+$", "");
@@ -356,6 +496,17 @@ final class MrxsValidationExport {
     ) {
         ExportResult {
             channels = List.copyOf(channels);
+        }
+    }
+
+    record PyramidExportResult(
+            Path outputDirectory,
+            Path manifest,
+            long totalChannelPixels,
+            List<ExportResult> levels
+    ) {
+        PyramidExportResult {
+            levels = List.copyOf(levels);
         }
     }
 

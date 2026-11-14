@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased — 0.5.0 development
+
+- Add a unified IF workflow workbench linking color/publication export, analysis/
+  batch processing and saved results/reports, with current image and ROI status.
+- Keep analysis, cancellation and batch controls visible while scrolling; make
+  manual review tools optional and reuse open workflow windows.
+- Add experimental cell/area/nuclear phenotype measurements, optional InstanSeg
+  integration, source-pixel publication export, saved analysis history and batch
+  recovery. Preserve configuration and source provenance with outputs.
+- Separate display transformations from quantitative measurements. Record
+  eligibility exclusions and distinguish inclusive from exact marker combinations.
+- These features remain experimental. Independent biological accuracy and vendor
+  algorithm equivalence have not been established; model/runtime are separate
+  dependencies. Existing batches must be resumed with their original plugin
+  version rather than bypassing stored runtime fingerprints.
+
+## 0.4.1-alpha — 2026-09-22
+
+- Add one-command raw-channel validation export for the same source-coordinate
+  region across every native MRXS pyramid level.
+- Add a top-level pyramid manifest linking per-level dimensions, downsamples,
+  folders and manifests without exposing the absolute source path.
+- Preflight both per-level and aggregate channel-pixel limits before writing a
+  pyramid export.
+- Expand the public synthetic MRXS fixture from one to two native pyramid
+  levels and exercise both levels through the binary index and ImageServer.
+- Add a display-only high-clarity mode that aligns the viewer to a native MRXS
+  pyramid level and disables bilinear smoothing without altering source pixels.
+- Restore QuPath's previous interpolation preference automatically when a
+  non-MRXS image becomes active, so SVS and other formats are unaffected.
+
 ## 0.4.0-alpha — 2026-08-13
 
 - Add an active-viewer validation export with untransformed per-channel PNGs,

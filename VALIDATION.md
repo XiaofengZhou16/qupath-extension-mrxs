@@ -120,3 +120,33 @@ pixel-perfect equivalence to the vendor viewer at every pyramid level.
   failures using the accessible four-channel fixture and the confirmed
   CY5-positive five-channel fixture. The earlier second five-channel fixture
   was not present at its previous path and was not revalidated in this run.
+
+## Version 0.4.1 pyramid export — 2026-09-22
+
+- The public synthetic fixture now contains two native pyramid levels. Tests
+  read packed and separately stored fluorescence payloads at both levels.
+- One command exports a fixed source-coordinate region at every native level.
+  Each level contains untransformed per-channel PNGs and a manifest with
+  channel statistics and SHA-256 digests; a top-level manifest links the
+  complete set.
+- Preflight checks cap a single level at 100 million pixels per channel and the
+  complete operation at 500 million channel-pixels before any output folder is
+  created.
+- The full clean build discovered 24 tests. With the currently accessible
+  four-channel private fixture, 22 executed successfully and two five-channel
+  tests were skipped because their previous local fixture path no longer
+  exists.
+- A 512 × 512 source-coordinate region from the private four-channel slide was
+  exported successfully across all nine native levels and all four channels.
+- This validates deterministic matched-region extraction across the plugin's
+  pyramid reader. It still does not establish pixel-perfect equivalence to
+  CaseViewer, because no unenhanced vendor export was used in this test.
+- Display-only clarity controls compile against the public QuPath 0.7 API. The
+  native-zoom command chooses the closest pyramid level in logarithmic zoom
+  space, preserves the image-space center and requests a complete repaint.
+- High-clarity mode temporarily disables QuPath's bilinear viewer interpolation
+  and records its previous value. Listeners restore that value when the active
+  viewer or active image is no longer backed by the MRXS extension.
+- These controls do not modify decoded bands, metadata, analysis requests or
+  raw exports. They cannot recover optical detail absent from the scan and do
+  not claim equivalence with proprietary SlideViewer rendering.

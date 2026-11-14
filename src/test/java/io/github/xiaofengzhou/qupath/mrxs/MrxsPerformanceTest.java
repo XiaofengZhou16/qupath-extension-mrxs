@@ -51,12 +51,16 @@ class MrxsPerformanceTest {
         );
              var executor = Executors.newFixedThreadPool(6)) {
             double downsample = server.getDownsampleForResolution(7);
-            int x = server.getWidth() / 4;
-            int y = server.getHeight() / 4;
-            RegionRequest request = RegionRequest.createInstance(
-                    server.getPath(), downsample, x, y, 4096, 4096
-            );
-            Callable<int[]> read = () -> checksum(server.readRegion(request));
+            RegionRequest request = null;
+            // A fixed fraction of the slide can be blank; gray overview padding
+            // previously made this test appear to exercise the decode cache.
+            for (var tile : server.getTileRequestManager().getTileRequests(RegionRequest.createInstance(
+                    server.getPath(), downsample, 0, 0, server.getWidth(), server.getHeight()))) {
+                if (server.hasStoredImage(tile)) { request = tile.getRegionRequest(); break; }
+            }
+            assertNotNull(request, "Need a stored tile to test shared decoding");
+            RegionRequest selected = request;
+            Callable<int[]> read = () -> checksum(server.readRegion(selected));
             var tasks = new ArrayList<Callable<int[]>>();
             for (int i = 0; i < 12; i++) {
                 tasks.add(read);

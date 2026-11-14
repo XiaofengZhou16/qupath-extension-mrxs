@@ -131,7 +131,7 @@ final class MrxsImageServer extends AbstractTileableImageServer {
                 BufferedImage source = decodedImageCache.get(placed.entry());
                 for (var channel : filterChannels.getValue()) {
                     copyComponent(
-                            source, channel.storedComponent(), placed.x(), placed.y(),
+                            source, channel.storedComponent(), placed,
                             levelX, levelY, outputWidth, outputHeight, bands[channel.index()]
                     );
                 }
@@ -159,18 +159,74 @@ final class MrxsImageServer extends AbstractTileableImageServer {
         });
     }
 
+    /** False certifies readTile initializes all bands to zero without copying stored pixels. */
+    boolean hasStoredImage(TileRequest request) throws IOException {
+        var geometry=levels.get(request.getLevel());
+        int x=(int)Math.round(request.getImageX()/geometry.downsample());
+        int y=(int)Math.round(request.getImageY()/geometry.downsample());
+        try {
+            for(int filter:channelsByFilter.keySet()) {
+                if(!getPlacedImageIndex(new StorageKey(request.getLevel(),filter))
+                        .query(x,y,request.getTileWidth(),request.getTileHeight()).isEmpty())return true;
+            }
+            return false;
+        }catch(ImageLoadingException e){throw (IOException)e.getCause();}
+    }
+
     private PlacedImageIndex loadPlacedImages(int level, int filter) throws IOException {
         List<PlacedImage> result = new ArrayList<>();
         LevelGeometry geometry = levels.get(level);
+        int divisions = metadata.imageDivisionsPerSide();
+        int across = metadata.imageCountX() / divisions;
+        int baseConcat = 1 << metadata.zoomLevels().getFirst().concatFactor();
+        var active = new java.util.HashSet<Integer>();
+        if (level > 0) {
+            for (var baseEntry : index.readTiles(0, filter)) {
+                int gx = Math.toIntExact(baseEntry.imageIndex() % metadata.imageCountX());
+                int gy = Math.toIntExact(baseEntry.imageIndex() / metadata.imageCountX());
+                int baseParts = Math.max(1, baseConcat / divisions);
+                for (int py = 0; py < baseParts; py++) for (int px = 0; px < baseParts; px++) {
+                    int ax = gx + px * divisions, ay = gy + py * divisions;
+                    if (ax < metadata.imageCountX() && ay < metadata.imageCountY()
+                            && isActivePosition(ax, ay))
+                        active.add((ay / divisions) * across + ax / divisions);
+                }
+            }
+        }
+        long concat = 1;
+        for (int z = 0; z <= level; z++) concat = Math.multiplyExact(concat,
+                1L << metadata.zoomLevels().get(z).concatFactor());
+        boolean positioned = slidePositions != null || metadata.zoomLevels().getFirst().overlapX() != 0
+                || metadata.zoomLevels().getFirst().overlapY() != 0;
+        int parts = !positioned ? 1 : Math.toIntExact(Math.max(1, concat / divisions));
+        double partWidth = (double) metadata.zoomLevels().get(level).imageWidth() / parts;
+        double partHeight = (double) metadata.zoomLevels().get(level).imageHeight() / parts;
         for (var entry : index.readTiles(level, filter)) {
             int gridX = Math.toIntExact(entry.imageIndex() % metadata.imageCountX());
             int gridY = Math.toIntExact(entry.imageIndex() / metadata.imageCountX());
+            if (positioned && (level > 0 || baseConcat > 1)) {
+                for (int py = 0; py < parts; py++) for (int px = 0; px < parts; px++) {
+                    int gx = gridX + px * divisions, gy = gridY + py * divisions;
+                    if (gx >= metadata.imageCountX() || gy >= metadata.imageCountY()
+                            || (level == 0 ? !isActivePosition(gx, gy)
+                                : !active.contains((gy / divisions) * across + gx / divisions))) continue;
+                    double[] pos = positionAtLevelZero(gx, gy);
+                    var crop = MrxsSubtileGeometry.create(pos[0] / geometry.downsample(),
+                            pos[1] / geometry.downsample(), px * partWidth, py * partHeight,
+                            partWidth, partHeight);
+                    if (crop.width() > 0 && crop.height() > 0)
+                        result.add(new PlacedImage(crop.x(), crop.y(), crop.width(), crop.height(),
+                                crop.sourceCenterX(), crop.sourceCenterY(), entry));
+                }
+                continue;
+            }
             double[] position = positionAtLevelZero(gridX, gridY);
             result.add(new PlacedImage(
                     (int) Math.round(position[0] / geometry.downsample()),
                     (int) Math.round(position[1] / geometry.downsample()),
                     metadata.zoomLevels().get(level).imageWidth(),
                     metadata.zoomLevels().get(level).imageHeight(),
+                    0.5, 0.5,
                     entry
             ));
         }
@@ -179,6 +235,7 @@ final class MrxsImageServer extends AbstractTileableImageServer {
 
     private double[] positionAtLevelZero(int gridX, int gridY) {
         var base = metadata.zoomLevels().getFirst();
+        double baseConcat = 1 << base.concatFactor();
         int divisions = metadata.imageDivisionsPerSide();
         int cameraX = gridX / divisions;
         int cameraY = gridY / divisions;
@@ -188,16 +245,23 @@ final class MrxsImageServer extends AbstractTileableImageServer {
         int positionIndex = cameraY * positionsAcross + cameraX;
         if (slidePositions != null) {
             return new double[] {
-                    slidePositions[positionIndex * 2] + subdivisionX * base.imageWidth(),
-                    slidePositions[positionIndex * 2 + 1] + subdivisionY * base.imageHeight()
+                    (slidePositions[positionIndex * 2] + subdivisionX * base.imageWidth()) / baseConcat,
+                    (slidePositions[positionIndex * 2 + 1] + subdivisionY * base.imageHeight()) / baseConcat
             };
         }
         return new double[] {
-                cameraX * (base.imageWidth() * divisions - base.overlapX())
-                        + subdivisionX * base.imageWidth(),
-                cameraY * (base.imageHeight() * divisions - base.overlapY())
-                        + subdivisionY * base.imageHeight()
+                (cameraX * (base.imageWidth() * divisions - base.overlapX())
+                        + subdivisionX * base.imageWidth()) / baseConcat,
+                (cameraY * (base.imageHeight() * divisions - base.overlapY())
+                        + subdivisionY * base.imageHeight()) / baseConcat
         };
+    }
+
+    private boolean isActivePosition(int gridX, int gridY) {
+        if (slidePositions == null) return true;
+        int divisions = metadata.imageDivisionsPerSide();
+        int camera = (gridY / divisions) * (metadata.imageCountX() / divisions) + gridX / divisions;
+        return camera == 0 || slidePositions[camera * 2] != 0 || slidePositions[camera * 2 + 1] != 0;
     }
 
     private int[] readSlidePositions() throws IOException {
@@ -235,27 +299,28 @@ final class MrxsImageServer extends AbstractTileableImageServer {
     }
 
     private static void copyComponent(
-            BufferedImage source, int component, int sourceX, int sourceY,
+            BufferedImage source, int component, PlacedImage placed,
             int targetX, int targetY, int targetWidth, int targetHeight, byte[] target
     ) {
         Raster raster = source.getRaster();
+        int sourceX = placed.x(), sourceY = placed.y();
         int sourceBand = sourceBandForStoredComponent(
                 component, raster.getNumBands()
         );
         int x0 = Math.max(sourceX, targetX);
         int y0 = Math.max(sourceY, targetY);
-        int x1 = Math.min(sourceX + source.getWidth(), targetX + targetWidth);
-        int y1 = Math.min(sourceY + source.getHeight(), targetY + targetHeight);
+        int x1 = Math.min(sourceX + placed.width(), targetX + targetWidth);
+        int y1 = Math.min(sourceY + placed.height(), targetY + targetHeight);
         int copyWidth = x1 - x0;
         if (copyWidth <= 0 || y1 <= y0) {
             return;
         }
         int[] samples = new int[copyWidth];
         for (int y = y0; y < y1; y++) {
-            int sourceRow = y - sourceY;
+            int sourceRow = (int) Math.floor(placed.sourceCenterY() + y - sourceY);
             int targetRow = (y - targetY) * targetWidth;
             raster.getSamples(
-                    x0 - sourceX, sourceRow, copyWidth, 1, sourceBand, samples
+                    (int) Math.floor(placed.sourceCenterX() + x0 - sourceX), sourceRow, copyWidth, 1, sourceBand, samples
             );
             int targetOffset = targetRow + x0 - targetX;
             for (int x = 0; x < copyWidth; x++) {
@@ -298,8 +363,8 @@ final class MrxsImageServer extends AbstractTileableImageServer {
             double downsample = (double) cumulative / baseCumulative;
             result.add(new LevelGeometry(
                     downsample,
-                    Math.max(1, (int) Math.ceil(width / downsample)),
-                    Math.max(1, (int) Math.ceil(height / downsample))
+                    Math.max(1, (int) Math.ceil((double) width / cumulative)),
+                    Math.max(1, (int) Math.ceil((double) height / cumulative))
             ));
         }
         return List.copyOf(result);
@@ -562,6 +627,7 @@ final class MrxsImageServer extends AbstractTileableImageServer {
     }
 
     private record PlacedImage(int x, int y, int width, int height,
+                               double sourceCenterX, double sourceCenterY,
                                MiraxIndex.TileEntry entry) {
         boolean intersects(int otherX, int otherY, int otherWidth, int otherHeight) {
             return x < otherX + otherWidth && x + width > otherX
@@ -573,10 +639,14 @@ final class MrxsImageServer extends AbstractTileableImageServer {
         private final int bucketSize;
         private final int imageCount;
         private final Map<Long, List<PlacedImage>> buckets;
+        private final Map<PlacedImage, Integer> compositionOrder;
 
         PlacedImageIndex(List<PlacedImage> images, int bucketSize) {
             this.bucketSize = bucketSize;
             this.imageCount = images.size();
+            Map<PlacedImage, Integer> order = new java.util.HashMap<>();
+            for (int i = 0; i < images.size(); i++) order.putIfAbsent(images.get(i), i);
+            compositionOrder = Map.copyOf(order);
             Map<Long, List<PlacedImage>> mutable = new java.util.HashMap<>();
             for (PlacedImage image : images) {
                 int minX = Math.floorDiv(image.x(), bucketSize);
@@ -607,9 +677,12 @@ final class MrxsImageServer extends AbstractTileableImageServer {
                     );
                 }
             }
-            return candidates.stream()
-                    .filter(image -> image.intersects(x, y, width, height))
-                    .toList();
+            var hits = candidates.stream().filter(image -> image.intersects(x, y, width, height));
+            // Single-bucket lists already preserve source order. Across buckets,
+            // traversal order must not change which overlapping crop wins.
+            if (minX != maxX || minY != maxY)
+                hits = hits.sorted(java.util.Comparator.comparingInt(compositionOrder::get));
+            return hits.toList();
         }
 
         int imageCount() {

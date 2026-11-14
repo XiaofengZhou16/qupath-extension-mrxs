@@ -19,7 +19,7 @@ class SyntheticMrxsFixtureTest {
         Path fixture = SyntheticMrxsFixture.create(temporaryDirectory);
         MrxsMetadata metadata = SlidedatParser.parse(fixture);
         assertEquals(4, metadata.channels().size());
-        assertEquals(1, metadata.zoomLevels().size());
+        assertEquals(2, metadata.zoomLevels().size());
         assertEquals(
                 java.util.List.of("DAPI", "Green", "Orange", "CY5"),
                 metadata.channels().stream().map(
@@ -30,11 +30,15 @@ class SyntheticMrxsFixtureTest {
         try (MiraxIndex index = MiraxIndex.open(metadata)) {
             assertEquals(1, index.readTiles(0, 0).size());
             assertEquals(1, index.readTiles(0, 3).size());
+            assertEquals(1, index.readTiles(1, 0).size());
+            assertEquals(1, index.readTiles(1, 3).size());
         }
 
         try (MrxsImageServer server = new MrxsImageServer(fixture.toUri())) {
             assertEquals(4, server.nChannels());
-            assertEquals(1, server.nResolutions());
+            assertEquals(2, server.nResolutions());
+            assertEquals(0, server.closestResolution(1.3));
+            assertEquals(1, server.closestResolution(1.7));
             var image = server.readRegion(RegionRequest.createInstance(
                     server.getPath(), 1.0, 0, 0, 16, 16
             ));
