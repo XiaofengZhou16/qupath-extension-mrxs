@@ -1,422 +1,127 @@
-# QuPath MRXS extension
+# QuPath MRXS：多通道免疫荧光浏览、分析与出图
 
-An experimental [QuPath](https://qupath.github.io/) 0.7 extension for native,
-tile-based access to multichannel fluorescence MRXS whole-slide images.
+在 QuPath 中直接打开受支持的多通道荧光 MRXS 切片，通过统一 IF 工作台完成高清浏览、调色、ROI 分析、历史结果查看和图片／表格导出。
 
-The extension is intended primarily for macOS and Linux systems where the
-vendor viewer is unavailable. It reads supported MRXS files directly and
-exposes their fluorescence channels as a non-RGB `UINT8` QuPath
-`ImageServer`.
+**[下载当前预览版](https://github.com/XiaofengZhou16/qupath-extension-mrxs/releases/tag/v0.5.0-snapshot-20261114) · [直接下载插件 JAR](https://github.com/XiaofengZhou16/qupath-extension-mrxs/releases/download/v0.5.0-snapshot-20261114/qupath-extension-mrxs-0.5.0-SNAPSHOT.jar) · [English / technical reference](README.en.md)**
 
-> [!WARNING]
-> This is alpha software. Keep the original scanner data and validate image
-> appearance and channel identity before using measurements in research.
+> 当前为实验性预览版，发布标签 `v0.5.0-snapshot-20261114`，插件内部版本为 `0.5.0-SNAPSHOT`。工程测试不代表分割或阳性判定准确率已验证，也不代表与 SaiViewer 算法等效。保留原始切片，并核对通道与抗体的对应关系。
 
-## Requirements
+## 1. 下载和安装
 
-- QuPath 0.7.x
-- An MRXS anchor file together with its same-named companion directory
-- Currently supported: 8-bit, JPEG-compressed fluorescence MRXS layouts
-  represented by the validation fixtures
+### 需要准备什么
 
-Brightfield slides and other MRXS encodings may already work through QuPath's
-standard readers. This extension deliberately declines unsupported layouts
-instead of silently decoding them incorrectly.
+- **QuPath 0.7.0**：从 [QuPath 官方发布页](https://github.com/qupath/qupath/releases) 安装适合系统的版本。当前安装与 GUI 验证基于 Apple Silicon macOS；其他平台尚未完成同等验收。
+- 原始 `.mrxs` 文件及其**同名数据文件夹**，二者必须放在一起。插件当前支持已测试布局的 **8-bit、JPEG 压缩荧光 MRXS**，不保证所有扫描仪和编码变体兼容。
+- 只浏览、调色或使用经典分割时不需要 AI 模型。InstanSeg AI 的额外准备见下文。
 
-Runtime and release packaging details: [dependencies and distribution](DEPENDENCIES.md).
-
-## Install
-
-1. Download the plugin JAR attached to the release you intend to use (not the
-   `-sources.jar`). Check that release's supported QuPath version. The IF features
-   described below are currently in `0.5.0-SNAPSHOT`; an older reader-only release
-   does not include them. For an unreleased build, follow the build instructions
-   below and use the JAR from `build/libs`.
-2. In QuPath, open **Extensions → Manage extensions** and drag the JAR into
-   the extensions window. Alternatively, copy it into the QuPath extensions
-   directory shown by QuPath.
-3. Restart QuPath.
-
-Remove older versions of this extension before installing an update.
-
-## Use
-
-1. Keep the `.mrxs` file beside its same-named data directory.
-2. Open the `.mrxs` file in QuPath as usual.
-3. If QuPath asks for an image type, choose **Fluorescence**.
-4. Use **Brightness/Contrast** to enable, recolor, or rescale individual
-   channels.
-
-The extension is discovered automatically; it does not add a separate menu
-command for opening images.
-
-For a slide currently opened by this extension, choose
-**Extensions → MRXS → Show compatibility report**. The report lists format
-support findings, channel/storage mappings, pyramid geometry and statistics
-from the lowest-resolution layer. An all-zero result applies only to that
-sampled layer; it does not prove that the full-resolution channel or biological
-stain is absent.
-
-### Validate against another viewer
-
-Choose **Extensions → MRXS → Validation → Export active viewer ROI** to export
-the visible source region at the nearest native pyramid level. The output
-folder contains:
-
-- one lossless 8-bit grayscale PNG for every raw channel;
-- `manifest.json` with source coordinates, native level, downsample, physical
-  pixel size, channel statistics and SHA-256 digests;
-- `display-composite.png`, which applies the currently selected QuPath channel
-  LUTs and ranges for a visual comparison.
-
-The per-channel PNGs are the quantitative reference: no display LUT, gamma,
-contrast transform or sharpening is applied. The manifest records the source
-filename but deliberately omits the absolute local path.
-
-For pyramid-level comparisons, choose **Extensions → MRXS → Validation →
-Export active viewer ROI - all pyramid levels**. This exports the same
-source-coordinate region at every native MRXS level into separate folders.
-Each level has its own raw-channel PNGs and manifest, while
-`pyramid-manifest.json` records the matched geometry and links all outputs.
-The command performs size checks before writing any image.
-
-### Export all channel combinations
-
-Select an area annotation and choose **Extensions → MRXS → Export → Export ROI
-- all channel combinations**. If no area ROI is selected, the command exports
-the visible viewer region. Select the participating channels and either the
-current viewer resolution or the highest native resolution.
-
-For channels A, B and C, the command exports `ABC`, `AB`, `AC`, `BC`, `A`, `B`
-and `C` as lossless pseudocolor PNGs. It also exports one untransformed
-grayscale PNG per channel and a JSON manifest. Combination images use the
-current QuPath channel colors, min/max ranges and viewer gamma. Pixels outside
-a non-rectangular ROI are black. To avoid accidental multi-gigabyte exports,
-the command limits all-combination export to eight selected channels, 25 million
-pixels per image and 500 million pixels across all combinations.
-
-### Multiplex IF analysis (development snapshot)
-
-Start at **Extensions → MRXS → IF workflow / IF 工作台** for the color/export,
-analysis/batch and history/report windows. The workbench shows the current image
-and selected area ROI; repeated clicks reuse an existing window. Analysis, cancel
-and batch controls remain visible while settings scroll.
-
-中文日常操作入口：[IF 工作台](docs/IF-WORKFLOW-UI-ZH.md)。
-详细参数与结果说明：[IF 工作流指南](docs/IF-QUICKSTART-ZH.md)。
-
-The `0.5.0-SNAPSHOT` build adds **Extensions → MRXS → IF analysis → Multiplex IF
-analysis**. This is an experimental analysis workflow, not a validated replacement
-for SaiViewer or an AI diagnostic system. The installed/released reader is not
-automatically updated by building the snapshot.
-
-1. Select an area annotation in an image with separate fluorescence channels.
-2. Choose phenotype markers and raw PA/nuclear/cytoplasmic thresholds. DAPI is
-   normally excluded from phenotyping. Defaults are starting values, not validated
-   assay cutoffs; determine thresholds with appropriate controls.
-3. Use existing QuPath cell objects, **classical nuclear watershed**, or optional
-   **InstanSeg AI** (setup below).
-   Classical watershed needs calibrated pixel sizes, a nuclear channel, detection threshold,
-   nuclear size limits and expansion distance. It is **not AI**; nuclear expansion
-   approximates cell boundaries and requires review. Its detection threshold acts
-   after background correction, unlike the raw analysis thresholds.
-4. Run into a new output folder. Work runs in the background, supports cancellation
-   and does not replace existing detections. Use result outlines and phenotype
-   filters to inspect inclusive versus exact combinations.
-5. Leave **Export PA pixel masks** enabled to retain a lossless, tiled audit of
-   pixel positivity. After completion, enable **Show PA pixel masks**, choose a
-   marker combination, toggle exact/inclusive and adjust mask opacity. This is
-   separate from the PN cell outlines. The "all" option shows any PA-positive
-   pixel; pixels negative for every selected marker remain transparent.
-
-PA mask overlays load only visible tiles asynchronously from the completed
-export, with SHA-256 verification and a bounded cache (at most 64 MiB or 1/32 of
-the heap, whichever is smaller). Zoom in when the visible region exceeds 128
-tiles or the cache budget. No original scan reread occurs during this preview.
-Overlay colors identify positivity combinations, **not fluorophore display LUTs**.
-Source pixels, classifications and stored detections are unchanged.
-
-Outputs include `combinations.csv`, `cells.csv`, `cells.geojson`, `profile.json`,
-`segmentation.json`, `roi.json` and `manifest.json`. A remaining `INCOMPLETE` file
-means the output must not be used. The profile buttons currently save/load analysis
-thresholds only; each completed run additionally records all segmentation parameters.
-
-`area-masks/` contains one shared set of unsigned 16-bit PNG label tiles,
-`tiles.jsonl` with level-coordinate origins/dimensions/checksums, and a manifest.
-Code 0 is outside the sampled ROI (including holes); code 1 is sampled ROI with
-no positive selected marker; all other codes are `1 + positivityBits`. Bit j
-refers to `profile.markers[j]`, not source-channel index. Eight positive markers
-require code 256, so these files must **not** be converted to 8-bit images.
-Coordinates, threshold equality and inclusive/exact formulas are documented in
-the mask manifest. Masks are streamed during the analysis pass, without another
-source read or one full-slide mask per combination. Export verifies that their
-counts agree with PA statistics. Numeric masks are not publication figures.
-
-PA counts threshold-positive pixels; NPN and CPN threshold mean raw nuclear and
-cytoplasmic intensities; PN is their per-marker OR, counting each cell once.
-Inclusive AB contains ABC; exact AB excludes other **selected** markers. Empty
-denominators are blank, not zero. ROI area is not automatically tissue area.
-Only cells wholly inside the ROI with sampled nucleus and cytoplasm are eligible.
-Neither pixel overlap nor same-cell positivity establishes molecular interaction.
-
-`cells.geojson` contains eligible cell and nuclear geometries with stable IDs and
-phenotype masks. Avoid importing duplicate detections for reanalysis. The panel
-also supports an **optional** isolated editable review workflow. Enable
-**显示人工修正工具（可选）** in the analysis panel to reveal its tools;
-automatic analysis does not require this step. Selecting review mode also reveals
-the tools.
-
-1. Finish analysis, then click **Create editable review copy…** and confirm.
-2. QuPath receives a new review annotation group, with paired **Cell** and
-   **Nucleus** annotations. Edit these copies with QuPath's annotation tools;
-   retain their pairing metadata. Original detections are unchanged.
-3. Select the parent review group and choose **Selected editable IF review group**
-   before running analysis again. Only that group's paired objects are measured;
-   other groups and original detections are not combined with them.
-4. Save the QuPath project/image data to retain edits. Review groups and pairing
-   survive `.qpdata` serialization. A review copy is not automatically validated
-   ground truth.
-5. To add a missed cell, draw separate outer cell and inner nucleus area
-   annotations. Multi-select these two annotations and the target review group
-   in the hierarchy, then click **Add hand-drawn cell/nucleus pair…**. The dialog
-   confirms containment-based pairing before copying them into the group. Both
-   must share the group's image plane; the cell must fit inside its ROI. Original
-   hand-drawn annotations are retained, and reusing the same source cell annotation
-   in the same group is rejected. Reanalyze and save the project afterward.
-6. To repair a missing nucleus without duplicating its cell, multi-select the
-   review group, its existing paired Cell annotation, and a new hand-drawn nuclear
-   annotation. Use **Add missing nucleus to review cell…**. Existing nuclei cannot
-   be overwritten; the new nucleus must fit inside that cell on the same plane
-   and leave cytoplasm. The original pair ID is retained. Reanalyze afterward;
-   adding a nucleus alone does not establish eligibility or marker positivity.
-
-`excluded-cells.csv` lists the first failing eligibility/measurement reason per
-excluded object; `excluded-cells.geojson` contains separate review annotations,
-not detections. The **Review excluded cells only** toggle shows drawable excluded
-outlines as orange dashes. Missing geometry cannot be displayed. Existing-cell
-input alone does not establish the upstream segmentation method.
-
-#### Optional AI segmentation
-
-Install the official [InstanSeg extension](https://github.com/qupath/qupath-extension-instanseg)
-and DJL extension. In the IF panel select **InstanSeg AI**, choose a trusted local
-`fluorescence_nuclei_and_cells` model folder, select AI input channels and CPU or
-MPS, then run. Nuclear and cell boundaries are supplied by the model rather than
-fixed nuclear expansion. AI input channels are independent of phenotype markers:
-include DAPI and useful cell-boundary channels; avoid adding empty/noisy channels
-without validation. Only load trusted TorchScript models. DJL can download its
-own PyTorch runtime on first use. Images are processed locally.
-
-The model/runtime is **not bundled** in the MRXS JAR. Missing extensions do not
-prevent MRXS reading or classical analysis. Current bridge validation uses
-InstanSeg 0.1.7, fluorescence model 0.1.1 and QuPath 0.7.0 on Apple Silicon.
-AI results record weight/RDF hashes, runtime and extension versions, input channels,
-device requested, tile settings, timing and failed tiles. Interrupted, zero-tile
-and partially failed inference cannot produce a successful measurement export.
-Cells without nuclei or measurable cytoplasm are excluded and reported.
-
-The default build tests synthetic nuclei, compartments, ROI holes, native levels,
-inclusive/exact counts, cancellation and output round-trips. Private-slide tests
-are opt-in and may be skipped when fixtures are absent. Separate local GUI and
-AI checks exercise display controls, analysis, history, export and remeasurement;
-a successful default build does not mean those optional checks ran.
-
-These are engineering checks, not independent segmentation or phenotype accuracy
-validation. Real research-batch performance, other operating systems and new
-scanner layouts need their own validation. Neither vendor algorithm equivalence
-nor clinical suitability is established. Historical development notes are not
-proof that a particular release passed a check. Consult the test evidence
-attached to the specific release.
-
-### Live color workbench and publication export (development snapshot)
-
-Open **Extensions → MRXS → Display → IF color and publication export**.
-The workbench is bound to the source image shown in its heading.
-
-- Enable channels, pick colors and adjust min/max sliders or numeric fields;
-  gamma, grayscale and inversion are display-only. Changes are debounced to
-  avoid unnecessary redraws. Original intensity pixels and IF thresholds stay
-  unchanged. Local gamma is restored when that viewer switches to another image.
-- Save/load display profiles as JSON. Exact source channel names and indices
-  must match; this prevents silently applying a profile to different markers.
-- Refresh synchronized merged/single-channel previews for the selected ROI or
-  visible region. They share a cached source raster, rendered in a background
-  worker. Their caption records the source bounding box and native downsample.
-  Refresh after changing ROI. Previews show the bounding box; publication export
-  additionally masks outside the annotation.
-- In **Publication export**, select an area annotation, native level, 300/600
-  DPI, font size and optional calibrated scale bar. Check the image-area pixel
-  dimensions, print dimensions, file count and memory estimate before export.
-- Export either the selected merge or every nonempty channel combination. Each
-  combination produces a `clean.png` and a labeled `figure.png`, plus a shared
-  display profile, ROI and manifest with checksums. Output is always a new folder.
-- Review `display-qc.txt` (and machine-readable `display-qc.json`) after export.
-  It counts raw samples strictly below/above each selected display range inside
-  the ROI, with endpoint equality and nonfinite samples reported separately.
-  Fractions use finite samples, excluding ROI holes. This is display clipping,
-  **not acquisition saturation or staining positivity**; composite RGB clipping
-  is not covered. The audit never changes your ranges or exported pixels.
-
-The export reads the native source region once and reuses it across combinations.
-LUTs use QuPath's display transforms; gamma is applied consistently. Clean PNGs
-are **display composites, not raw intensity data**. Figure labels and scale bars
-are placed outside the image in additional margins; the source-derived image
-area is copied without resizing or sharpening. DPI is written as PNG `pHYs`
-metadata and controls print size only. It cannot add resolution or recover lost
-bit depth. Biological scale derives from µm/source pixel and native downsample,
-not DPI. Monitor ICC transforms and viewer annotation overlays are not exported.
-
-Use a consistent profile across comparison groups, review clipping/background,
-and confirm antibody-to-channel identities before publication. Fluorescence
-channel names are not automatically interpreted as antibody identities. If an
-export fails/cancels, retain the `INCOMPLETE` marker and do not use that output.
-
-### Display presets
-
-**Show display sampling (Retina diagnosis)** reports logical viewport dimensions,
-window render/output scale, the logical-view pyramid level and a finer native
-sampling target for a device-resolution renderer. It is read-only and takes no
-screenshots. It does **not** enable a new renderer or increase source resolution.
-QuPath 0.7.0's main image buffer was verified at logical dimensions even with a
-2× window render scale; simply disabling smoothing or changing export DPI does
-not remove that limit. The development build now includes an opt-in main-view
-integration: **Toggle native HiDPI view (experimental)**.
-
-This mode renders native source tiles at the window's device render scale and
-inserts a mouse-transparent image layer below QuPath's navigator/scalebar
-controls. It reuses QuPath overlay and ROI-handle drawing APIs. During mouse
-press/scroll interactions the stock viewer is shown immediately; the high-detail
-layer returns after the view settles. A cancelled/stale frame never replaces a
-newer view. The mode closes when the source image changes or the viewer closes.
-Toggle again to disable; **Show native HiDPI status** reports dimensions, level,
-view geometry and cache/read counts. This mode does not change global smoothing,
-gamma, source pixels, detections or publication-export settings.
-
-RGB tile caching is viewer-local and capped at min(64 MiB, heap/32); complete
-display profiles and source tile requests are part of the cache key. Only one
-render worker and one queued job are retained. Frame/tile limits retain the
-stock view if a request is too large or fails. Source frames are reused for
-overlay-only repaints. Initial native-level pixel checks, main-view interaction,
-stale-read rejection, rotation and cleanup tests pass, but full manual annotation
-editing, third-party overlay compatibility and multi-monitor behavior remain
-release gates. Treat this as experimental, not a claim of scanner-level or
-commercial-viewer equivalence.
-
-Native-zoom commands preserve the image center, including rotated views. PA and
-cell-result overlays query the actual source-coordinate graphics clip rather
-than assuming QuPath always supplies viewport bounds in its region argument.
-
-The **Extensions → MRXS → Display** menu provides:
-
-- **Raw linear**: channel ranges 0–255 and viewer gamma 1.0;
-- **CaseViewer-like percentile preset**: viewer-local percentile contrast for
-  a darker, higher-contrast composite;
-- **Reset display**: restores the active viewer state captured before the first
-  MRXS display preset was applied;
-- **Show current channel ranges**: reports the exact viewer gamma and per-channel
-  display ranges.
-- **High-clarity view**: snaps to the nearest native MRXS pyramid level and
-  disables bilinear smoothing so that the viewer does not soften pixel edges;
-- **Snap zoom to nearest native pyramid level**: removes fractional zoom
-  resampling without changing QuPath's interpolation preference;
-- **Restore interpolation preference**: restores the interpolation setting that
-  was active before high-clarity mode.
-
-The range, gamma and native-zoom commands change only the active QuPath viewer.
-None of the display commands modifies MRXS pixels, exported raw values or
-measurements. At startup the extension only warns if the global viewer gamma is
-unusually far from 1.0; it never changes that preference.
-
-The interpolation option in the older **High-clarity view** command is a QuPath-wide
-viewer preference. The extension records its previous value and restores it
-automatically as soon as a non-MRXS image becomes active, preventing the mode
-from silently carrying over to SVS, TIFF or other formats. "DPI" settings apply
-to saved or printed images; on-screen detail is determined by source pixels,
-native pyramid level, zoom and interpolation.
-
-## Implemented capabilities
-
-- Parse `Slidedat.ini` without assuming fixed hierarchy positions.
-- Discover zoom, filter, focus and auxiliary hierarchy dimensions.
-- Discover fluorescence channel names, colors, filter levels and packed
-  component indices.
-- Read recursive MIRAX `Index.dat` pages and JPEG payloads from `Data*.dat`.
-- Separate packed JPEG components using `STORING_CHANNEL_NUMBER` and
-  `DATA_IN_THIS_FILTER_LEVEL`.
-- Read the compressed stitching-position buffer.
-- Expose the native pyramid as a non-RGB `UINT8` QuPath `ImageServer`.
-- Limit tile lookup with a spatial index.
-- Bound decoded-image memory with a 128 MB cache.
-- Deduplicate concurrent decoding and reuse positional file channels.
-- Aggregate compatibility errors and warnings with stable diagnostic codes.
-- Report channel minima, maxima, means and non-zero fractions on demand.
-- Export reproducible validation ROIs and full pyramid metadata.
-- Export selected ROIs as every non-empty channel combination.
-- Apply transparent, viewer-local raw and high-contrast display presets.
-
-## Known limitations
-
-- Compatibility has only been validated on a small number of fluorescence
-  slides from one workflow.
-- Pixel-perfect equivalence with the vendor viewer at every pyramid level has
-  not yet been established; use the validation export for matched-region tests.
-- Corrupted-record fuzzing and broader scanner/software-version testing remain
-  future work.
-- Channel metadata and display colors must be checked against the staining
-  panel; successful decoding does not establish biological signal.
-
-Please open an issue with non-sensitive metadata and logs for unsupported
-files. Do not upload patient data or whole-slide images to a public issue.
-
-## Build and test
-
-QuPath 0.7 requires Java 25.
-
-```bash
-JAVA_HOME=/path/to/jdk-25 \
-GRADLE_USER_HOME="$PWD/.gradle" \
-./gradlew clean test build --no-watch-fs
+```text
+切片目录/
+├── sample.mrxs
+└── sample/
+    ├── Slidedat.ini
+    ├── Index.dat
+    └── Data*.dat
 ```
 
-Private-slide integration tests are skipped unless these environment variables
-point to readable MRXS anchor files:
+### 安装步骤
+
+1. 下载 **`qupath-extension-mrxs-0.5.0-SNAPSHOT.jar`**。不要安装 `-sources.jar`，也不要把源码 ZIP 当作插件。
+2. 在 QuPath 的 **Extensions → Manage extensions** 中确认扩展目录位置，然后关闭 QuPath。
+3. 将主插件 JAR 复制到该扩展目录。更新时先把旧 MRXS 插件 JAR 移到目录外备份，避免同时加载两个版本。
+4. 重新打开 QuPath，确认出现 **Extensions → MRXS → IF workflow / IF 工作台**。
+
+仅使用插件不需要编译源码或安装 Gradle。复制到扩展目录后重启的方式已在隔离目录中验证。
+
+需要校验下载文件时，发布页的 `SHA256SUMS.txt` 列出了附件校验值。macOS/Linux 可运行：
 
 ```bash
-export MRXS_TEST_SAMPLE_4C=/path/to/four-channel-slide.mrxs
-export MRXS_TEST_SAMPLE_5C=/path/to/five-channel-slide.mrxs
-export MRXS_TEST_SAMPLE_5C_POSITIVE_CY5=/path/to/confirmed-cy5-positive-slide.mrxs
-./gradlew test
+shasum -a 256 qupath-extension-mrxs-0.5.0-SNAPSHOT.jar
 ```
 
-The public test suite creates a small synthetic four-channel MRXS dataset at
-runtime. It exercises `Slidedat.ini`, `Index.dat`, packed JPEG payloads, BGR/RGB
-component mapping, the QuPath `ImageServer`, validation export and combination
-export without distributing real whole-slide images. Private fixtures remain
-necessary to validate real scanner layouts and pyramid geometry.
+本版主插件 SHA-256：
 
-The installable artifact is written to
-`build/libs/qupath-extension-mrxs-0.5.0-SNAPSHOT.jar` for the current development
-version. The filename follows the version in `build.gradle.kts`.
+```text
+961d3c6383b6058f11708faa5f6e249af8b97f7ebf5fb859d129ed9d0c448d04
+```
 
-## Validation
+## 2. 第一次使用：先完成一个小 ROI
 
-Historical reader validation covers parser, metadata, index, JPEG, multichannel,
-builder-selection, spatial-index and concurrent-read checks against private
-four- and five-channel fixtures. See [VALIDATION.md](VALIDATION.md) for that
-anonymized record; it does not establish current IF accuracy or a rerun on the
-current artifact.
+### 打开切片与选择区域
 
-## Contributing
+1. 在 QuPath 中打开 `.mrxs`，保留完整同名数据文件夹。若提示图像类型，选择 **Fluorescence**。
+2. 确认读取到独立荧光通道，而不是只有 RGB 合成图。可通过 **Extensions → MRXS → Show compatibility report** 查看兼容性和存储信息。
+3. 使用 QuPath 的矩形或多边形标注工具，在组织上画一个面积 ROI 并选中；首次分析建议从小区域开始。
+4. 打开 **IF 工作台**，核对显示的切片名和 ROI。工作台有调色、分析、历史三个入口。
 
-Bug reports and focused pull requests are welcome. See
-[CONTRIBUTING.md](CONTRIBUTING.md).
+### 调色和导出图片
 
-This community project is not affiliated with or endorsed by QuPath,
-3DHISTECH, CaseViewer, or OpenSlide. MRXS and product names may be trademarks
-of their respective owners.
+1. 进入工作台的调色与发表图窗口。勾选通道，调整伪彩、显示上下限和 gamma。
+2. 点击 **Preview selected ROI / visible region** 预览；改变 ROI 后重新点击。用 **Save display profile / Load display profile** 保存或恢复显示参数。
+3. 选择导出层级、通道组合、标签和比例尺；比例尺需要有效的物理像素标定。
+4. 点击 **Check selected ROI dimensions** 检查尺寸，再点击 **Export publication panels…**，选择输出父目录。
 
-## License
+导出包含合并／单通道／所选组合的 PNG 及复现信息。图片从源像素生成；提高 DPI 只改变打印尺寸，不会增加原始分辨率。发表前检查标签、比例尺和亮度截断，比较组使用一致的显示规则。
 
-Copyright (C) 2026 contributors.
+**调色只影响显示和图片外观，不改变原始强度或阳性判定阈值。** 导出的伪彩图片不能替代原始通道数据进行定量。
 
-Licensed under the [GNU General Public License v3.0](LICENSE).
+### 运行 IF 分析
+
+1. 进入 **IF 分析与批处理**，确认已选中面积 ROI。
+2. 选择参与表型统计的通道和原始强度阈值。DAPI 通常用于核定位，不自动作为目标抗体。阈值应依据阴性、单染等适当对照确定。
+3. 选择输入方式：现有 QuPath 细胞、经典核分水岭，或 **InstanSeg AI**。经典分水岭不是 AI；核外扩只是细胞边界近似。
+4. 点击底部 **Analyze selected ROI / 分析**，选择新的输出目录。运行中可取消；等待后台结束和控件恢复，不要把不完整结果当作阴性。
+5. 检查结果、细胞轮廓和排除原因。人工修正工具默认隐藏，是可选步骤；自动分析不要求先手工修正。
+
+分析输出包含 CSV、轮廓 GeoJSON、ROI、参数和来源记录。保留完整结果目录；仍带 **`INCOMPLETE`** 标记的输出不能使用。空分母留空，不能当作零；ROI 总面积也不等于组织面积。
+
+### 使用 InstanSeg AI（可选）
+
+1. 分别安装官方 [InstanSeg 扩展](https://github.com/qupath/qupath-extension-instanseg)及其所需 DJL 组件，按官方说明准备可信的 `fluorescence_nuclei_and_cells` 模型目录。
+2. 重启 QuPath，在 IF 分析窗口选择 **InstanSeg AI**，指定模型目录并确认来源可信。模型目录应包含 `instanseg.pt` 和 `rdf.yaml`。
+3. 选择模型输入通道与设备。AI 输入通道与表型统计通道是两套设置；核通道和边界通道应根据模型与样本选择。
+4. 先用小 ROI 运行并检查结果，再批量处理。首次使用时 DJL 可能需要下载运行时；离线使用须提前准备。
+
+已在本机验证的组合为 QuPath 0.7.0、InstanSeg 0.1.7、荧光模型 0.1.1（Apple Silicon）。**模型和 AI 运行时不包含在本插件 JAR 中**，不同组织、染色和设备需另行验证。
+
+### 导出 Excel／Word 报告
+
+在工作台进入 **历史结果与报告**，点击 **Choose results folder / 选择结果目录**，选择一次分析目录或其直接父目录。选中需要的记录，再点击 **Export selected reports / 导出所选记录**。
+
+报告是所选结果的快照。以后修改 ROI 或重新分析，不会自动更新旧报告；应明确选择新的结果重新导出。Word 原生分页尚未完成验收，正式使用前检查排版。
+
+## 3. 多切片、多 ROI 批处理
+
+先建立 QuPath 项目，为每张切片画好并命名 ROI，**保存图像数据**。在分析窗口配置好模型和参数后，点击 **Project AI batch… / 项目 AI 批处理…**，读取已保存 ROI 并选择需要的任务。
+
+批处理只读取已保存 ROI，不会因为没有 ROI 就自动做整片分析。所有选中切片需具有相同的通道名与顺序。完成后检查逐项状态，再导出批次 Excel／Word。
+
+恢复旧批次必须保留原插件、模型及完整批次目录；不要修改身份指纹绕过版本检查。多个 ROI 不能自动视为独立动物／患者重复。
+
+详见 **[项目批处理简明说明](docs/IF-BATCH-QUICKSTART-ZH.md)**。
+
+## 4. 常见问题
+
+| 现象 | 检查或处理 |
+| --- | --- |
+| 没有 MRXS 菜单 | 确认安装的是主 JAR、QuPath 为 0.7.0、扩展目录正确且没有重复旧版本，然后重启。 |
+| 切片打不开或提示缺文件 | 检查 `.mrxs` 与同名目录、`Index.dat` 及所有数据文件；查看兼容性报告。不要只复制 `.mrxs`。 |
+| 工作台调色／分析入口不可用 | 确认当前图像由本插件以 MRXS 多通道方式打开；历史浏览不要求打开切片。 |
+| AI 不可用或模型加载失败 | 检查 InstanSeg/DJL 安装、可信模型目录及运行时准备情况；先查看 QuPath 日志，不要将失败解释为零细胞。 |
+| 颜色调整后阳性率没变 | 正常：显示参数与定量阈值分开。需要改变判定时调整分析阈值并重新分析。 |
+| 预览与新 ROI 不一致 | 重新点击预览按钮；预览使用包围框，最终导出按 ROI 掩膜处理。 |
+| 导出目录有 `INCOMPLETE` | 分析／导出未成功完成，保留诊断记录并重试，不使用其中的半成品。 |
+| 旧批次拒绝恢复 | 使用创建该批次的原插件和模型，或另建新批次；不绕过版本与来源检查。 |
+
+反馈问题请提供插件版本、QuPath 版本、系统、操作步骤及脱敏日志。**不要把患者数据、私人实验报告或整张切片上传到公开 Issue。**
+
+## 5. 详细说明与开发
+
+- [IF 工作台日常操作](docs/IF-WORKFLOW-UI-ZH.md)
+- [IF 参数、结果格式与可选复核](docs/IF-QUICKSTART-ZH.md)
+- [英文技术说明与构建方法](README.en.md)
+- [依赖与分发范围](DEPENDENCIES.md)
+- [历史读取器验证记录](VALIDATION.md) · [参与开发](CONTRIBUTING.md)
+
+当前预览版已完成本地构建、GUI／AI 工程回归、隔离扩展目录加载及两次独立启动检查；[对应源码的 GitHub CI 已通过](https://github.com/XiaofengZhou16/qupath-extension-mrxs/actions/runs/43602210236)。这些检查不建立生物学准确率。真实 30 张研究切片批次、其他平台和更多 MRXS 布局尚未完成同等验证。
+
+本项目与 QuPath、3DHISTECH、CaseViewer、SaiViewer 或 OpenSlide 无隶属或背书关系。源码采用 [GPLv3](LICENSE)；模型和第三方软件适用各自条款。

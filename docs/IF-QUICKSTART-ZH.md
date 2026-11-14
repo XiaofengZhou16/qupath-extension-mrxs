@@ -15,8 +15,7 @@
 多选不会合并细胞或把多个 ROI 当作独立生物学重复。
 现支持 Word/Excel 批量报告，以及来源匹配后的历史 ROI、可测量细胞和已导出 PA 掩膜恢复；操作与限制见文末。不会自动把记录套用到其他切片。
 
-适用：QuPath 0.7.0、插件 `0.5.0-SNAPSHOT`。这些功能尚未自动安装到日常
-QuPath；本地构建成功不等于已经发布。AI 与高清主视野仍需按自己的组织、
+适用：QuPath 0.7.0、插件 `0.5.0-SNAPSHOT`。可从 [2026-11-14 预览版](https://github.com/XiaofengZhou16/qupath-extension-mrxs/releases/tag/v0.5.0-snapshot-20261114) 下载；安装后需重启 QuPath。AI 与高清主视野仍需按自己的组织、
 扫描批次和硬件验证，不能宣称与 SaiViewer 等效。
 
 ## 1. 先确认读到了原始通道
